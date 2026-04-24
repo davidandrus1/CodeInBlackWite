@@ -97,22 +97,60 @@ def load_match_stats(directory_path):
     return pd.DataFrame(all_stats)
 
 def process_data(players_file, stats_dir):
-    """Merges profiles and dynamically calculates p90 for every metric."""
+    """Merges profiles, calculates p90s, and adds Transfermarkt values."""
     df_players = load_players(players_file)
     df_stats = load_match_stats(stats_dir)
     
-    metric_cols = [col for col in df_stats.columns if col != 'player_id']
-    agg_funcs = {col: 'sum' for col in metric_cols}
-    df_agg_stats = df_stats.groupby('player_id').agg(agg_funcs).reset_index()
+    # Group by player_id and sum all numeric columns directly!
+    df_agg_stats = df_stats.groupby('player_id').sum().reset_index()
     
+    # Merge with Player Profiles
     df_final = pd.merge(df_players, df_agg_stats, on='player_id', how='inner')
+    
+    # Filter out players with too few minutes
     df_final = df_final[df_final['minutes_played'] >= 200].copy()
     
+    # Calculate p90 Metrics dynamically for all fields
+    metric_cols = [col for col in df_stats.columns if col != 'player_id']
     stats_to_convert = [col for col in metric_cols if col != 'minutes_played']
+    
     for col in stats_to_convert:
         df_final[f'{col}_p90'] = (df_final[col] / df_final['minutes_played']) * 90
         df_final[f'{col}_p90'] = df_final[f'{col}_p90'].round(2)
         
+    # ==========================================
+    # 💰 NEW: TRANSFERMARKT INTEGRATION
+    # ==========================================
+    try:
+        # Load the Transfermarkt dataset
+        df_tm = pd.read_csv("players.csv", low_memory=False)
+        
+        # Keep only what we need to save memory
+        df_tm = df_tm[['name', 'market_value_in_eur']].dropna()
+        
+        # Create a matching column by normalizing and lowercasing both datasets
+        # This fixes issues where Wyscout says "Andrei Șut" and TM says "Andrei Sut"
+        df_tm['match_name'] = df_tm['name'].apply(lambda x: normalize_romanian(str(x)).lower())
+        df_final['match_name'] = df_final['name'].str.lower() 
+        
+        # Merge the datasets!
+        df_final = pd.merge(df_final, df_tm[['match_name', 'market_value_in_eur']], on='match_name', how='left')
+        
+        # Drop the temporary match_name column
+        df_final = df_final.drop(columns=['match_name'])
+        
+        # If a player wasn't found in Transfermarkt, give them a default value of €250k
+        df_final['market_value_in_eur'] = df_final['market_value_in_eur'].fillna(250000)
+        
+    except FileNotFoundError:
+        print("⚠️ players.csv not found. Using default €250k market values.")
+        df_final['market_value_in_eur'] = 250000
+    
+    # FIX FOR STREAMLIT CACHING
+    for col in df_final.columns:
+        if df_final[col].dtype == 'object':
+            df_final[col] = df_final[col].astype(str)
+            
     return df_final
 
 if __name__ == "__main__":
