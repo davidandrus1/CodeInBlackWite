@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from data_processor import process_data
+from backend.data_processor import process_data
 
 st.set_page_config(page_title="U Cluj Scouting AI", page_icon="🦅", layout="wide")
 
