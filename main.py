@@ -1,1 +1,1 @@
-salut baieti
+print("salut baieti")
