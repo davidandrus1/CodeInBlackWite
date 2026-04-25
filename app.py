@@ -1,7 +1,9 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 from data_processor import process_data
+# Import the custom functions we will build in the other files
+from first_tab import render_first_tab
+from second_tab import render_second_tab
 
 # --- 1. Page Configuration ---
 st.set_page_config(
@@ -11,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. Unified Styling (Matches your Wireframe) ---
+# --- 2. Unified Styling ---
 st.markdown("""
     <style>
     .block-container { padding-top: 1.5rem; }
@@ -35,102 +37,29 @@ st.markdown("""
 # --- 3. Data Loading ---
 @st.cache_data
 def load_all_data():
-    # 1. Load the performance database from JSON
+    # Load the performance database
     df_perf = process_data("Date - meciuri/players (1).json", "Date - meciuri")
     
-    # 2. Load your specific U Cluj Squad file
-    # This file has one column: 'Player'
-    u_cluj_list = pd.read_csv("u_cluj_current_squad.csv")
-    
+    # Load U Cluj Squad
+    try:
+        u_cluj_list = pd.read_csv("u_cluj_current_squad.csv")
+    except:
+        u_cluj_list = pd.DataFrame(columns=['Player ID']) # Fallback if file is missing
+        
     return df_perf, u_cluj_list
 
-with st.spinner('Loading Roster...'):
+with st.spinner('Loading Database...'):
     df_master, u_cluj_names = load_all_data()
 
-# Filter df_master to only include the names found in your CSV
-# We use .isin() to match the 'Player' column from your CSV to 'original_name' in JSON
-
-u_cluj_ids = u_cluj_names['Player ID'].astype(str).tolist()
-
-# 2. Filter df_master using the correct column 'player_id', also forced to string
-roster_df = df_master[df_master['player_id'].astype(str).isin(u_cluj_ids)].copy()
-
-# --- 4. Main Interface ---
+# --- 4. Main Interface & Tabs ---
 st.title("🦅 U Cluj - Roster & Replacement Finder")
 
+# Create the Tabs
 tab1, tab2 = st.tabs(["📋 CURRENT SQUAD", "🔍 SEARCH DATABASE"])
 
+# Pass the data into the separate files to render!
 with tab1:
-    st.subheader(f"U Cluj Roster ({len(roster_df)} Players Matched)")
-    
-    # Display the roster table
-    # Users can click a row to trigger the "Replacement Analysis"
-    event = st.dataframe(
-        roster_df[['original_name', 'age', 'position', 'market_value_in_eur']], 
-        column_config={
-            "original_name": "Name",
-            "age": "Age",
-            "position": "Position",
-            "market_value_in_eur": st.column_config.NumberColumn("Value", format="€%d")
-        },
-        use_container_width=True,
-        hide_index=True,
-        selection_mode="single-row",
-        on_select="rerun"
-    )
+    render_first_tab(df_master, u_cluj_names)
 
-# --- 5. Selection Analysis (The Wireframe Section) ---
-selected_rows = event.get("selection", {}).get("rows", [])
-
-if selected_rows:
-    selected_idx = selected_rows[0]
-    target = roster_df.iloc[selected_idx]
-    
-    st.divider()
-    st.header(f"Replacement Analysis: {target['original_name']}")
-    
-    # Define replacements pool (Exclude U Cluj players so we find new signings)
-    replacements_pool = df_master[~df_master['original_name'].isin(u_cluj_names['Player ID'])]
-    
-    # Logic for cards
-    u21_df = replacements_pool[
-        (replacements_pool['position'] == target['position']) & (replacements_pool['age'] <= 21)
-    ].sort_values('minutes_played', ascending=False).head(1)
-    
-    liga_df = replacements_pool[
-        (replacements_pool['position'] == target['position'])
-    ].sort_values('market_value_in_eur', ascending=False).head(5)
-
-    # Rendering the Layout
-    c1, c2, c3 = st.columns(3)
-    
-    with c1:
-        st.markdown("### 👤 Selected")
-        st.metric("Name", target['original_name'])
-        st.metric("Value", f"€{int(target['market_value_in_eur']):,}")
-
-    with c2:
-        st.markdown("### ✨ Top U21 Prospect")
-        if not u21_df.empty:
-            p = u21_df.iloc[0]
-            st.markdown(f"""<div class="scout-card"><h3>{p['original_name']}</h3>
-                <p>Age: {int(p['age'])} | Mins: {int(p['minutes_played'])}</p>
-                <div class="value">€{int(p['market_value_in_eur']):,}</div></div>""", unsafe_allow_html=True)
-
-    with c3:
-        st.markdown("### 🏟️ Liga Replacement 1")
-        if not liga_df.empty:
-            r = liga_df.iloc[0]
-            st.markdown(f"""<div class="scout-card"><h3>{r['original_name']}</h3>
-                <p>Age: {int(r['age'])} | Mins: {int(r['minutes_played'])}</p>
-                <div class="value">€{int(r['market_value_in_eur']):,}</div></div>""", unsafe_allow_html=True)
-
-    # Additional grid
-    st.markdown("### 📋 Additional Options")
-    grid = st.columns(4)
-    for i, (_, row) in enumerate(liga_df.iloc[1:].iterrows()):
-        with grid[i]:
-            st.markdown(f"""<div class="scout-card"><h3>{row['original_name']}</h3>
-                <p>Age: {int(row['age'])}</p><div class="value">€{int(row['market_value_in_eur']):,}</div></div>""", unsafe_allow_html=True)
-else:
-    st.info("Select a player from the roster to start analysis.")
+with tab2:
+    render_second_tab(df_master)

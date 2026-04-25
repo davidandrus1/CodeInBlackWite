@@ -97,54 +97,73 @@ def load_match_stats(directory_path):
     return pd.DataFrame(all_stats)
 
 def process_data(players_file, stats_dir):
-    """Merges profiles, calculates p90s, and adds Transfermarkt values."""
+    """Merges profiles and dynamically calculates p90 for every metric."""
     df_players = load_players(players_file)
     df_stats = load_match_stats(stats_dir)
     
     # Group by player_id and sum all numeric columns directly!
     df_agg_stats = df_stats.groupby('player_id').sum().reset_index()
     
-    # Merge with Player Profiles
-    df_final = pd.merge(df_players, df_agg_stats, on='player_id', how='inner')
+    # Change 'inner' to 'left' merge so players with 0 minutes aren't deleted
+    df_final = pd.merge(df_players, df_agg_stats, on='player_id', how='left')
     
-    # Filter out players with too few minutes
-    df_final = df_final[df_final['minutes_played'] >= 200].copy()
+    # Fill their missing minutes with 0
+    df_final['minutes_played'] = df_final['minutes_played'].fillna(0)
     
-    # Calculate p90 Metrics dynamically for all fields
+    # Calculate p90 Metrics dynamically for all fields SAFELY
     metric_cols = [col for col in df_stats.columns if col != 'player_id']
     stats_to_convert = [col for col in metric_cols if col != 'minutes_played']
     
     for col in stats_to_convert:
-        df_final[f'{col}_p90'] = (df_final[col] / df_final['minutes_played']) * 90
-        df_final[f'{col}_p90'] = df_final[f'{col}_p90'].round(2)
+        # Fill missing raw stats with 0 for the bench players
+        df_final[col] = df_final[col].fillna(0)
+        
+        # Safe Math: Only calculate p90 if they actually played, otherwise set to 0.0
+        df_final[f'{col}_p90'] = df_final.apply(
+            lambda row: (row[col] / row['minutes_played'] * 90) if row['minutes_played'] > 0 else 0.0, 
+            axis=1
+        ).round(2)
         
     # ==========================================
-    # 💰 NEW: TRANSFERMARKT INTEGRATION
+    # 💰 TRANSFERMARKT & U CLUJ OVERRIDE INTEGRATION
     # ==========================================
     try:
-        # Load the Transfermarkt dataset
+        # 1. Load the Global Transfermarkt dataset (for the rest of the league)
         df_tm = pd.read_csv("players.csv", low_memory=False)
-        
-        # Keep only what we need to save memory
         df_tm = df_tm[['name', 'market_value_in_eur']].dropna()
-        
-        # Create a matching column by normalizing and lowercasing both datasets
-        # This fixes issues where Wyscout says "Andrei Șut" and TM says "Andrei Sut"
         df_tm['match_name'] = df_tm['name'].apply(lambda x: normalize_romanian(str(x)).lower())
         df_final['match_name'] = df_final['name'].str.lower() 
-        
-        # Merge the datasets!
         df_final = pd.merge(df_final, df_tm[['match_name', 'market_value_in_eur']], on='match_name', how='left')
-        
-        # Drop the temporary match_name column
         df_final = df_final.drop(columns=['match_name'])
+    except FileNotFoundError:
+        print("⚠️ players.csv not found. General market values will be empty.")
+        df_final['market_value_in_eur'] = pd.NA
+
+    try:
+        # 2. THE HARD OVERRIDE: Inject accurate U Cluj Squad values
+        df_ucluj = pd.read_csv("u_cluj_current_squad.csv")
         
-        # If a player wasn't found in Transfermarkt, give them a default value of €250k
-        df_final['market_value_in_eur'] = df_final['market_value_in_eur'].fillna(250000)
+        # Clean the "€1,500,000" strings into pure numbers
+        def clean_currency(val):
+            if pd.isna(val) or val == 'N/A':
+                return pd.NA
+            return float(str(val).replace('€', '').replace(',', ''))
+            
+        df_ucluj['exact_value'] = df_ucluj['Market Value (€)'].apply(clean_currency)
+        df_ucluj['Player ID'] = df_ucluj['Player ID'].astype(str)
+        
+        # Merge exactly on Wyscout ID
+        df_final = pd.merge(df_final, df_ucluj[['Player ID', 'exact_value']], left_on='player_id', right_on='Player ID', how='left')
+        
+        # If 'exact_value' exists, override whatever Kaggle gave us!
+        df_final['market_value_in_eur'] = df_final['exact_value'].combine_first(df_final['market_value_in_eur'])
+        df_final = df_final.drop(columns=['Player ID', 'exact_value'])
         
     except FileNotFoundError:
-        print("⚠️ players.csv not found. Using default €250k market values.")
-        df_final['market_value_in_eur'] = 250000
+        print("⚠️ u_cluj_current_squad.csv not found. Could not apply squad overrides.")
+        
+    # Fill remaining missing values with 0 so the Streamlit UI formatting doesn't crash
+    df_final['market_value_in_eur'] = df_final['market_value_in_eur'].fillna(0)
     
     # FIX FOR STREAMLIT CACHING
     for col in df_final.columns:
