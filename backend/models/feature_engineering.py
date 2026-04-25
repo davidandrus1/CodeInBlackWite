@@ -56,7 +56,7 @@ FEATURES_PER_POSITION = {
     "portar": [
         "avg_gkSaves",
         "pct_gkSaves",
-        "avg_gkConcededGoals",       # invers — mai mic e mai bine
+        "avg_gkConcededGoals",       
         "avg_gkExits",
         "pct_gkSuccessfulExits",
         "avg_gkAerialDuels",
@@ -76,7 +76,7 @@ FEATURES_PER_POSITION = {
         "avg_shotsBlocked",
         "avg_progressivePasses",
         "pct_successfulProgressivePasses",
-        "avg_dangerousOwnHalfLosses",   # invers
+        "avg_dangerousOwnHalfLosses",   
     ],
 
     "fundas_lateral": [
@@ -105,7 +105,7 @@ FEATURES_PER_POSITION = {
         "pct_successfulPasses",
         "avg_progressivePasses",
         "pct_successfulProgressivePasses",
-        "avg_dangerousOwnHalfLosses",   # invers
+        "avg_dangerousOwnHalfLosses", 
     ],
 
    "mijlocas_central": [
@@ -173,6 +173,58 @@ FEATURES_PER_POSITION = {
     ],
 }
 
+# Adaugă asta la sfârșitul feature_engineering.py
+
+TOP_FEATURES_PER_POSITION = {
+    "portar": [
+        "avg_gkSaves",
+        "pct_gkSaves",
+        "avg_gkExits",
+        "pct_gkAerialDuelsWon",
+    ],
+    "fundas_central": [
+        "avg_defensiveDuels",
+        "pct_defensiveDuelsWon",
+        "avg_interceptions",
+        "avg_aerialDuels",
+    ],
+    "fundas_lateral": [
+        "avg_defensiveDuels",
+        "pct_defensiveDuelsWon",
+        "avg_crosses",
+        "avg_progressiveRun",
+    ],
+    "mijlocas_defensiv": [
+        "avg_interceptions",
+        "avg_ballRecoveries",
+        "avg_defensiveDuels",
+        "pct_successfulPasses",
+    ],
+    "mijlocas_central": [
+        "avg_keyPasses",
+        "avg_progressivePasses",
+        "avg_interceptions",
+        "pct_newDuelsWon",
+    ],
+    "mijlocas_ofensiv": [
+        "avg_keyPasses",
+        "avg_xgAssist",
+        "avg_dribbles",
+        "avg_xgShot",
+    ],
+    "atacant_lateral": [
+        "avg_dribbles",
+        "avg_xgShot",
+        "avg_xgAssist",
+        "avg_progressiveRun",
+    ],
+    "atacant_central": [
+        "avg_goals",
+        "avg_xgShot",
+        "avg_touchInBox",
+        "avg_aerialDuels",
+    ],
+}
 
 def get_features_for_position(df: pd.DataFrame, position: str) -> pd.DataFrame:
     """
