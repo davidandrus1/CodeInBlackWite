@@ -1,6 +1,7 @@
 import os
 import json
 import pandas as pd
+from models.feature_engineering import extract_position_for_ml, POSITION_MAPPING
 
 def normalize_romanian(text):
     """Replaces Romanian diacritics with the standard alphabet for easy searching."""
@@ -27,7 +28,6 @@ def load_players(filepath):
     for p in players_data:
         p_id = p.get('wyId', p.get('id', p.get('playerId')))
         
-        # 1. Get the Full Name
         first_name = p.get('firstName', '')
         last_name = p.get('lastName', '')
         if first_name or last_name:
@@ -35,7 +35,6 @@ def load_players(filepath):
         else:
             raw_name = p.get('name', p.get('shortName', 'Unknown'))
             
-        # 2. Normalize for the search bar
         search_friendly_name = normalize_romanian(raw_name)
         
         role = p.get('role', {})
@@ -46,14 +45,14 @@ def load_players(filepath):
         if birth_date:
             try:
                 birth_year = int(birth_date.split('-')[0])
-                age = 2026 - birth_year # Base year for U Cluj Hackathon constraints
+                age = 2026 - birth_year
             except:
-                pass
+                age = None
                 
         player_list.append({
             'player_id': str(p_id),
-            'name': search_friendly_name, # Used for the dropdown search
-            'original_name': raw_name,    # Preserved for the beautiful UI display
+            'name': search_friendly_name,
+            'original_name': raw_name,
             'position': position,
             'age': age
         })
