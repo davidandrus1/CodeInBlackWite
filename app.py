@@ -4,36 +4,31 @@ from data_processor import process_data
 from tab_squad import render_squad_tab
 from tab_search import render_search_tab
 
-# --- 1. Page Configuration ---
 st.set_page_config(
-    page_title="U Cluj Scouting AI", 
-    page_icon="🦅", 
+    page_title="U-Scout", 
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. Session State Initialization ---
 if 'active_page' not in st.session_state:
-    st.session_state.active_page = "🔍 SEARCH DATABASE"
+    st.session_state.active_page = "SEARCH DATABASE"
 if 'search_target_name' not in st.session_state:
     st.session_state.search_target_name = ""
 
-# --- 3. Unified Styling ---
 st.markdown("""
     <style>
     .block-container { padding-top: 1.5rem; }
     
-    /* 🎯 THE SEGMENTED CONTROL TOGGLE */
     div[role="radiogroup"] {
         display: flex;
         flex-direction: row;
         justify-content: center;
-        background-color: #16181f;
+        background-color: #1a1a1a;
         padding: 6px;
         border-radius: 12px;
         width: fit-content;
         margin: 0 auto 20px auto;
-        border: 1px solid #2e303e;
+        border: 1px solid #333333;
     }
     div[role="radiogroup"] > label {
         background-color: transparent;
@@ -43,8 +38,8 @@ st.markdown("""
         transition: all 0.3s ease-in-out;
     }
     div[role="radiogroup"] > label[data-checked="true"] {
-        background-color: #00FFAA;
-        box-shadow: 0px 4px 10px rgba(0, 255, 170, 0.2);
+        background-color: #ffffff;
+        box-shadow: 0px 4px 10px rgba(255, 255, 255, 0.1);
     }
     div[role="radiogroup"] > label[data-checked="true"] p {
         color: #000000 !important;
@@ -53,30 +48,28 @@ st.markdown("""
     div[role="radiogroup"] [data-testid="stMarkdownContainer"] { margin-left: 0px !important; }
     div[role="radiogroup"] span[data-baseweb="radio"] { display: none !important; }
     
-    /* 🚨 CUSTOM CSS FOR GREEN PRIMARY BUTTONS 🚨 */
     div.stButton > button[kind="primary"] {
-        background-color: #04b16d !important;
-        border-color: #04b16d !important;
-        color: white !important;
+        background-color: #ffffff !important;
+        border-color: #ffffff !important;
+        color: #000000 !important;
         border-radius: 8px;
+        font-weight: bold;
     }
     div.stButton > button[kind="primary"]:hover {
-        background-color: #218838 !important;
-        border-color: #1e7e34 !important;
+        background-color: #e6e6e6 !important;
+        border-color: #e6e6e6 !important;
     }
 
-    /* Card Styles */
     .scout-card {
-        background-color: #0e1117; padding: 20px; border-radius: 10px;
-        border: 1px solid #00FFAA; text-align: center;
+        background-color: #1a1a1a; padding: 20px; border-radius: 10px;
+        border: 1px solid #ffffff; text-align: center;
         display: flex; flex-direction: column; justify-content: center;
     }
     .scout-card p { color: #ffffff; margin: 4px 0; font-size: 0.95rem; }
-    .scout-card .value { color: #00FFAA; font-size: 1.2rem; font-weight: bold; margin-top: 10px;}
+    .scout-card .value { color: #ffffff; font-size: 1.2rem; font-weight: bold; margin-top: 10px;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 4. Data Loading ---
 @st.cache_data
 def load_all_data():
     df_perf = process_data("Date - meciuri/players (1).json", "Date - meciuri")
@@ -89,15 +82,14 @@ def load_all_data():
 with st.spinner('Loading Database...'):
     df_master, u_cluj_names = load_all_data()
 
-st.markdown("<h1 style='text-align: center;'>🦅 U Cluj - AI Scouting Platform</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>U-Scout</h1>", unsafe_allow_html=True)
 
-# --- 5. Main Frame Navigation ---
 selected_page = st.radio(
     "Navigation", 
-    ["🔍 SEARCH DATABASE", "📋 CURRENT SQUAD"],
+    ["SEARCH DATABASE", "CURRENT SQUAD"],
     horizontal=True,
     label_visibility="collapsed",
-    index=0 if st.session_state.active_page == "🔍 SEARCH DATABASE" else 1
+    index=0 if st.session_state.active_page == "SEARCH DATABASE" else 1
 )
 
 if selected_page != st.session_state.active_page:
@@ -106,8 +98,7 @@ if selected_page != st.session_state.active_page:
 
 st.divider()
 
-# --- 6. Render the Active Page ---
-if st.session_state.active_page == "🔍 SEARCH DATABASE":
-    render_search_tab(df_master)
+if st.session_state.active_page == "SEARCH DATABASE":
+    render_search_tab(df_master, u_cluj_names)
 else:
     render_squad_tab(df_master, u_cluj_names)

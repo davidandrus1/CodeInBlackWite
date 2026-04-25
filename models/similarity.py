@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import pearsonr
 from sklearn.metrics.pairwise import cosine_similarity
+from functools import lru_cache # 🚨 ADDED FOR I/O OPTIMIZATION
 
 from models.feature_engineering import (
     TOP_FEATURES_PER_POSITION,
@@ -16,15 +17,14 @@ from models.feature_engineering import (
     FIELD_POSITIONS,
 )
 
-
 # ─────────────────────────────────────────────
-# LOADERS
+# LOADERS (CACHED TO PREVENT I/O BOTTLENECKS)
 # ─────────────────────────────────────────────
 
 def _base_dir() -> str:
     return os.path.dirname(os.path.abspath(__file__))
 
-
+@lru_cache(maxsize=16) # 🚨 FIX: Cache dataframes in memory so we don't read from disk 150 times!
 def _load_normalized(position: str) -> pd.DataFrame:
     path = os.path.join(_base_dir(), "saved_data", f"normalized_{position}.pkl")
     try:
@@ -34,7 +34,7 @@ def _load_normalized(position: str) -> pd.DataFrame:
             f"Fișierul pentru {position} nu există. Rulează train.py."
         )
 
-
+@lru_cache(maxsize=1) # 🚨 FIX: Cache the massive JSON file in memory
 def _load_physical_data() -> dict:
     json_path = os.path.join(
         _base_dir(), "..", "Date - meciuri", "players (1).json"
@@ -54,27 +54,22 @@ def _load_physical_data() -> dict:
 
 
 # ─────────────────────────────────────────────
-# HELPERS
+# HELPERS (DUPLICATES REMOVED)
 # ─────────────────────────────────────────────
 
 def _to_short(name: str) -> str:
-    parts = name.strip().split()
-    return f"{parts[0][0]}. {' '.join(parts[1:])}" if len(parts) >= 2 else name
-
+    """🚨 FIX: Disabled name abbreviation to prevent mismatch bugs."""
+    return name.strip()
 
 def _find_player(df: pd.DataFrame, name: str) -> pd.DataFrame:
-    row = df[df["name"] == name]
-    if row.empty:
-        row = df[df["name"] == _to_short(name)]
-    return row
-
+    """🚨 FIX: Safe, case-insensitive match for the full name."""
+    return df[df["name"].str.lower() == name.lower()]
 
 def _get_player_id(df: pd.DataFrame, name: str):
     row = _find_player(df, name)
     if row.empty:
         return None
     return int(row.iloc[0]["playerId"])
-
 
 def _extract_features(row: pd.Series, features: list) -> np.ndarray:
     return np.array([float(row.get(f, 0.0)) for f in features])
@@ -85,18 +80,6 @@ def _extract_features(row: pd.Series, features: list) -> np.ndarray:
 # ─────────────────────────────────────────────
 
 def _compute_fizic_gaussian(player_id_a, player_id_b, physical: dict):
-    """
-    Gaussian Similarity pe înălțime + greutate.
-
-    Formula: e^(-(d²) / (2σ²))
-    σ = 0.3 → tolerant cu diferențe mici, strict cu mari:
-        5cm  diferență → ~91%
-        10cm diferență → ~69%
-        20cm diferență → ~13%
-
-    Returnează None dacă datele lipsesc.
-    Pondere în scorul final: 40%
-    """
     data_a = physical.get(player_id_a, {})
     data_b = physical.get(player_id_b, {})
     h_a, w_a = data_a.get("height", 0), data_a.get("weight", 0)
@@ -117,24 +100,9 @@ def _compute_fizic_gaussian(player_id_a, player_id_b, physical: dict):
 
     return round((h_sim + w_sim) / 2 * 100, 1)
 
-
 def _compute_pearson(vec_a: np.ndarray, vec_b: np.ndarray) -> float:
-    """
-    Pearson Correlation — pentru STIL.
-
-    Măsoară corelația dintre profilurile de joc.
-    Cel mai bun pentru "joacă la fel" indiferent de volum.
-
-    r = 1  → profil identic
-    r = 0  → nicio corelație
-    r = -1 → profil opus
-
-    Convertim la 0-100: score = (r + 1) / 2 * 100
-
-    Pondere în scorul final: 40%
-    """
     if len(vec_a) < 2 or np.std(vec_a) == 0 or np.std(vec_b) == 0:
-        return 50.0  # neutru când nu putem calcula
+        return 50.0  
 
     try:
         r, _ = pearsonr(vec_a, vec_b)
@@ -143,23 +111,9 @@ def _compute_pearson(vec_a: np.ndarray, vec_b: np.ndarray) -> float:
     except Exception:
         return 50.0
 
-
 def _compute_weighted_euclidean(
-    row_a: pd.Series,
-    row_b: pd.Series,
-    features: list,
-    weights: dict,
+    row_a: pd.Series, row_b: pd.Series, features: list, weights: dict
 ) -> float:
-    """
-    Weighted Euclidean Distance — pentru CALITATE.
-
-    Fiecare metric de eficiență contribuie proporțional
-    cu importanța lui pentru poziția respectivă.
-
-    score = 1 - distanța_ponderată_normalizată
-
-    Pondere în scorul final: 20%
-    """
     total_weight = 0.0
     weighted_sq_diff = 0.0
 
@@ -173,13 +127,12 @@ def _compute_weighted_euclidean(
     if total_weight == 0:
         return 0.0
 
-    # Normalizăm: distanța max posibilă e sqrt(total_weight) când diff=1 la toate
     max_dist = np.sqrt(total_weight)
     dist = np.sqrt(weighted_sq_diff)
-    score = 1.0 - min(dist / max_dist, 1.0)
-
+    
+    # 🚨 FIX: Safe math clamping to prevent negative scores if un-normalized data slips in
+    score = max(0.0, 1.0 - (dist / max_dist)) 
     return round(score * 100, 1)
-
 
 # ─────────────────────────────────────────────
 # RAPORT TEXT
@@ -442,16 +395,3 @@ def get_players_for_position_excluding(position: str, exclude_ids: list) -> list
         return sorted(df_filtered["name"].dropna().unique().tolist())
     except FileNotFoundError:
         return []
-    
-# ─────────────────────────────────────────────
-# HELPERS
-# ─────────────────────────────────────────────
-
-def _to_short(name: str) -> str:
-    """🚨 THE FIX: We completely disable name abbreviation. Just return the full name!"""
-    return name.strip()
-
-def _find_player(df: pd.DataFrame, name: str) -> pd.DataFrame:
-    """🚨 THE FIX: Safe, case-insensitive match for the full name."""
-    row = df[df["name"].str.lower() == name.lower()]
-    return row

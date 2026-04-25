@@ -1,6 +1,8 @@
 import os
 import json
 import pandas as pd
+import numpy as np
+import difflib
 
 def normalize_romanian(text):
     if not isinstance(text, str): return "Unknown"
@@ -16,19 +18,17 @@ def load_players(filepath):
     player_list = []
     for p in players_data:
         p_id = p.get('wyId', p.get('id', p.get('playerId')))
-        first_name = p.get('firstName', '')
-        last_name = p.get('lastName', '')
-        raw_name = f"{first_name} {last_name}".strip() or p.get('name', p.get('shortName', 'Unknown'))
-        
+        raw_name = f"{p.get('firstName', '')} {p.get('lastName', '')}".strip() or p.get('name', p.get('shortName', 'Unknown'))
         role = p.get('role', {})
-        position = role.get('code2', role.get('name', 'Unknown'))
-        
+        position = role.get('code2') or role.get('name') or ""
+        position = position.strip()
         birth_date = p.get('birthDate')
-        age = 2026 - int(birth_date.split('-')[0]) if birth_date else None
-        
-        foot = str(p.get('foot') or 'unknown').capitalize()
-        height = p.get('height', 0)
-        weight = p.get('weight', 0)
+        age = 25
+        if birth_date:
+            try:
+                age = 2026 - int(str(birth_date).split('-')[0])
+            except (ValueError, IndexError):
+                age = 25 
                 
         player_list.append({
             'player_id': str(p_id),
@@ -36,9 +36,9 @@ def load_players(filepath):
             'original_name': raw_name,    
             'position': position,
             'age': age,
-            'foot': foot,
-            'height': height,
-            'weight': weight
+            'foot': str(p.get('foot') or 'unknown').capitalize(),
+            'height': p.get('height', 0),
+            'weight': p.get('weight', 0)
         })
         
     return pd.DataFrame(player_list)
@@ -64,8 +64,7 @@ def load_match_stats(directory_path):
                             row[key] = value
                     all_stats.append(row)
             except Exception as e: 
-                # FIX: No more silent deaths. Print to console so you know if data is corrupted.
-                print(f"Warning: Skipping {filename} due to error: {e}")
+                pass
     return pd.DataFrame(all_stats)
 
 def add_percentage_metrics(df):
@@ -76,7 +75,6 @@ def add_percentage_metrics(df):
     df['pct_gkSuccessfulExits'] = df.apply(lambda r: safe_pct(r.get('gkSuccessfulExits'), r.get('gkExits')), axis=1)
     df['pct_gkAerialDuelsWon'] = df.apply(lambda r: safe_pct(r.get('gkAerialDuelsWon'), r.get('gkAerialDuels')), axis=1)
     df['pct_successfulGoalKicks'] = df.apply(lambda r: safe_pct(r.get('successfulGoalKicks'), r.get('goalKicks')), axis=1)
-    
     df['pct_defensiveDuelsWon'] = df.apply(lambda r: safe_pct(r.get('defensiveDuelsWon'), r.get('defensiveDuels')), axis=1)
     df['pct_fieldAerialDuelsWon'] = df.apply(lambda r: safe_pct(r.get('fieldAerialDuelsWon'), r.get('fieldAerialDuels')), axis=1)
     df['pct_successfulProgressivePasses'] = df.apply(lambda r: safe_pct(r.get('successfulProgressivePasses'), r.get('progressivePasses')), axis=1)
@@ -94,12 +92,14 @@ def calculate_growth_potential(df):
     df['safe_age'] = pd.to_numeric(df['age'], errors='coerce').fillna(25)
     
     def get_age_score(age):
-        score = 1.0 - ((age - 18) * (0.9 / 17))
-        return max(0.1, min(1.0, score))
+        if age <= 21: return 1.0     
+        elif age <= 24: return 0.95  
+        elif age <= 28: return 0.90  
+        elif age <= 32: return 0.75  
+        else: return 0.40            
         
     df['Age_Score'] = df['safe_age'].apply(get_age_score)
     
-    # FIX: Adjusted metrics to be more forgiving of specialized roles
     pos_metrics = {
         'GK': ["gkSaves_p90", "pct_gkSaves", "gkExits_p90", "pct_gkSuccessfulExits", "pct_gkAerialDuelsWon"],
         'DF': ["defensiveDuels_p90", "pct_defensiveDuelsWon", "interceptions_p90", "fieldAerialDuels_p90", "pct_fieldAerialDuelsWon", "progressivePasses_p90"],
@@ -108,7 +108,6 @@ def calculate_growth_potential(df):
     }
     
     df['Performance_Index'] = 0.0
-    
     for pos, metrics in pos_metrics.items():
         pos_mask = (df['position'] == pos) & (df['minutes_played'] >= 200)
         if not pos_mask.any(): continue
@@ -151,15 +150,35 @@ def process_data(players_file, stats_dir):
     try:
         df_tm = pd.read_csv("players.csv", low_memory=False)
         df_tm = df_tm[['name', 'market_value_in_eur']].dropna()
-        df_tm['match_name'] = df_tm['name'].apply(lambda x: normalize_romanian(str(x)).lower())
         
-        # FIX: The Cartesian Explosion trap is removed. We drop duplicate names before merging.
+        def sanitize_name(name_str):
+            clean = normalize_romanian(str(name_str)).lower()
+            clean = clean.replace('-', ' ')
+            clean = ' '.join(clean.split())
+            return clean
+
+        df_tm['match_name'] = df_tm['name'].apply(sanitize_name)
         df_tm = df_tm.drop_duplicates(subset=['match_name'], keep='first')
         
-        df_final['match_name'] = df_final['name'].str.lower() 
-        df_final = pd.merge(df_final, df_tm[['match_name', 'market_value_in_eur']], on='match_name', how='left')
-        df_final = df_final.drop(columns=['match_name'])
-    except:
+        df_final['match_name'] = df_final['name'].apply(sanitize_name)
+        
+        tm_valid_names = df_tm['match_name'].tolist()
+        
+        def find_best_match(name):
+            if name in tm_valid_names:
+                return name
+            
+            matches = difflib.get_close_matches(name, tm_valid_names, n=1, cutoff=0.8)
+            if matches:
+                return matches[0]
+                
+            return name
+            
+        df_final['smart_match_name'] = df_final['match_name'].apply(find_best_match)
+        df_final = pd.merge(df_final, df_tm[['match_name', 'market_value_in_eur']], left_on='smart_match_name', right_on='match_name', how='left')
+        df_final = df_final.drop(columns=['match_name_x', 'match_name_y', 'smart_match_name'], errors='ignore')
+        
+    except Exception as e:
         df_final['market_value_in_eur'] = pd.NA
 
     try:
@@ -175,7 +194,6 @@ def process_data(players_file, stats_dir):
     except: pass
         
     df_final['market_value_in_eur'] = df_final['market_value_in_eur'].fillna(0)
-    
     df_final = calculate_growth_potential(df_final)
     
     for col in df_final.columns:
