@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from data_processor import process_data
 
-# 1. Page Configuration
+# --- 1. Page Configuration ---
 st.set_page_config(
     page_title="U Cluj Scouting AI", 
     page_icon="🦅", 
@@ -11,130 +11,160 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 2. Styling
+# --- 2. Unified Styling (Wireframe Aesthetic) ---
 st.markdown("""
     <style>
     .block-container { padding-top: 1.5rem; }
-    .metric-card {
-        background-color: #1e2130;
-        padding: 15px;
+    
+    /* The Green Border Card Style from your U21 screenshot */
+    .scout-card {
+        background-color: #0e1117;
+        padding: 20px;
         border-radius: 10px;
-        border-left: 5px solid #ff4b4b;
+        border: 1px solid #00FFAA;
+        text-align: center;
+        height: 220px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        transition: transform 0.2s;
+    }
+    .scout-card:hover {
+        background-color: #161a24;
+        transform: scale(1.02);
+    }
+    .scout-card h3 {
+        color: #00FFAA;
+        font-size: 1.4rem;
         margin-bottom: 10px;
+        font-weight: 600;
+    }
+    .scout-card p {
+        color: #ffffff;
+        margin: 2px 0;
+        font-size: 0.95rem;
+    }
+    .scout-card .value {
+        color: #ffffff;
+        font-size: 1.2rem;
+        font-weight: bold;
+        margin-top: 15px;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# 3. Backend Data Connection
+# --- 3. Data Loading ---
 @st.cache_data
 def load_cached_data():
+    # Note: Ensure paths match your local directory structure
     return process_data("Date - meciuri/players (1).json", "Date - meciuri")
 
-with st.spinner('Aggregating Wyscout Data...'):
+with st.spinner('Accessing U Cluj Database...'):
     df_master = load_cached_data()
 
-# 4. Header
-st.markdown("# 🦅 U Cluj - AI Scouting Assistant")
-st.divider()
+# --- 4. Header & Tabs ---
+st.title("🦅 U Cluj - Roster & Replacement Finder")
 
-# 5. Sidebar - Configuration & Filters
-with st.sidebar:
-    st.header("Scouting Criteria")
-    search_name = st.text_input("Player Name (Optional)", placeholder="Search specific name...")
-    age_range = st.slider("Age Range", 15, 45, (15, 40))
-    max_val = st.number_input("Max Market Value (€)", value=1200000)
-    min_mins = st.number_input("Minimum Minutes Played", min_value=0, value=0)
+tab1, tab2 = st.tabs(["📋 ROSTER OVERVIEW", "🔍 SEARCH DATABASE"])
+
+with tab1:
+    st.subheader("Current Squad")
+    roster_display_cols = ['original_name', 'age', 'position', 'market_value_in_eur']
     
-    positions_available = ["Any"] + sorted(df_master['position'].dropna().unique().tolist())
-    selected_pos = st.selectbox("Position", options=positions_available)
-
-    st.divider()
-    find_button = st.button("🚀 Find Prospects", type="primary", use_container_width=True)
-
-# 6. Main Display Logic
-if "results_active" not in st.session_state:
-    st.session_state.results_active = False
-
-if find_button:
-    st.session_state.results_active = True
-
-if st.session_state.results_active:
-    mask = (df_master['age'] >= age_range[0]) & (df_master['age'] <= age_range[1])
-    mask &= (df_master['minutes_played'] >= min_mins)
-    
-    if search_name:
-        mask &= (df_master['name'].str.contains(search_name, case=False, na=False))
-    if selected_pos != "Any":
-        mask &= (df_master['position'] == selected_pos)
-    if max_val > 0 and 'market_value' in df_master.columns:
-        mask &= (df_master['market_value'] <= max_val)
-        
-    df_filtered = df_master[mask].reset_index(drop=True)
-    
-    st.subheader(f"🎯 Scouting Results ({len(df_filtered)} players found)")
-    
-    # Table selection
-    event = st.dataframe(
-        df_filtered[['original_name', 'position', 'age', 'minutes_played']],
+    # Selection trigger
+    roster_event = st.dataframe(
+        df_master.head(15), 
+        column_config={
+            "original_name": "Name",
+            "age": "Age",
+            "position": "Position",
+            "market_value_in_eur": st.column_config.NumberColumn("Market Value", format="€%d")
+        },
         use_container_width=True,
         hide_index=True,
         selection_mode="single-row",
-        on_select="rerun",
-        height=400 
+        on_select="rerun"
     )
 
-    selected_rows = event.get("selection", {}).get("rows", [])
+with tab2:
+    st.info("Global Search and advanced filters can be implemented here.")
+
+# --- 5. Analysis Section (Triggered by Selection) ---
+selection = roster_event.get("selection", {}).get("rows", [])
+
+if selection:
+    selected_index = selection[0]
+    target = df_master.iloc[selected_index]
     
-    if selected_rows:
-        # --- AUTO-SCROLL JAVASCRIPT ---
-        # This invisible component tells the browser to scroll to the bottom
-        st.components.v1.html(
-            """
-            <script>
-                window.parent.document.querySelectorAll('[data-testid="stVerticalBlock"]')[0].scrollTo({
-                    top: 1000, 
-                    behavior: 'smooth'
-                });
-            </script>
-            """,
-            height=0,
-        )
-        
-        selected_index = selected_rows[0]
-        p_data = df_filtered.iloc[selected_index]
-        
-        st.divider()
-        st.markdown(f"### 👤 Analysis: {p_data['original_name']}")
-        
-        col_main, col_side = st.columns([2, 1])
-        
-        with col_main:
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Position", str(p_data['position']).upper())
-            m2.metric("Age", int(p_data['age']) if pd.notnull(p_data['age']) else "N/A")
-            m3.metric("Minutes", int(p_data['minutes_played']))
-            
-            ignore = ['player_id', 'name', 'original_name', 'position', 'age', 'minutes_played']
-            metrics = [c for c in df_master.columns if c not in ignore and not str(c).endswith('_p90')]
-            rows = [{"Metric": m.replace('_',' ').capitalize(), "Val": p_data[m]} for m in metrics]
-            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, height=350)
-        
-        with col_side:
+    st.divider()
+    st.header(f"Replacement Analysis: {target['original_name']}")
+    
+    # Filter Logic
+    u21_prospects = df_master[
+        (df_master['position'] == target['position']) & 
+        (df_master['age'] <= 21) & 
+        (df_master['original_name'] != target['original_name'])
+    ].sort_values(by='minutes_played', ascending=False)
+
+    liga_replacements = df_master[
+        (df_master['position'] == target['position']) & 
+        (df_master['original_name'] != target['original_name'])
+    ].sort_values(by='market_value_in_eur', ascending=False).head(5)
+
+    # --- ROW 1: Selected Player + Top U21 + Top Liga ---
+    c1, c2, c3 = st.columns(3)
+    
+    with c1:
+        st.markdown("### 👤 Selected Player")
+        st.metric("Name", target['original_name'])
+        st.write(f"**Pos:** {target['position']} | **Age:** {target['age']}")
+        st.metric("Current Value", f"€{int(target['market_value_in_eur']):,}")
+
+    with c2:
+        st.markdown("### ✨ Top U21 Prospect")
+        if not u21_prospects.empty:
+            u21 = u21_prospects.iloc[0]
             st.markdown(f"""
-                <div class="metric-card">
-                    <h4>AI Recommendation</h4>
-                    <h2 style="color:#ff4b4b;">SCOUT</h2>
-                    <p>Matches <b>{p_data['position']}</b> profile for U Cluj.</p>
-                </div>
-                <div class="metric-card" style="border-left-color: #00FFAA;">
-                    <h4>Growth Potential</h4>
-                    <h2 style="color:#00FFAA;">+8%</h2>
-                    <p>Estimated market value increase.</p>
+                <div class="scout-card">
+                    <h3>{u21['original_name']}</h3>
+                    <p>Age: {int(u21['age'])}</p>
+                    <p>Mins: {int(u21['minutes_played'])}</p>
+                    <div class="value">€{int(u21['market_value_in_eur']):,}</div>
                 </div>
             """, unsafe_allow_html=True)
-    else:
-        st.info("👆 Click a row in the table above to view the analysis below.")
+        else:
+            st.warning("No U21 prospects found.")
+
+    with c3:
+        st.markdown("### 🏟️ Top Superliga Option")
+        if not liga_replacements.empty:
+            rep1 = liga_replacements.iloc[0]
+            st.markdown(f"""
+                <div class="scout-card">
+                    <h3>{rep1['original_name']}</h3>
+                    <p>Age: {int(rep1['age'])}</p>
+                    <p>Mins: {int(rep1['minutes_played'])}</p>
+                    <div class="value">€{int(rep1['market_value_in_eur']):,}</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+    # --- ROW 2: Additional Market Options (All using the same card wireframe) ---
+    st.markdown("### 📋 Additional Superliga Options")
+    grid_cols = st.columns(4)
+    
+    # Taking the next 4 replacements to fill the grid
+    other_reps = liga_replacements.iloc[1:5]
+    
+    for i, (idx, row) in enumerate(other_reps.iterrows()):
+        with grid_cols[i]:
+            st.markdown(f"""
+                <div class="scout-card">
+                    <h3 style="font-size:1.1rem;">{row['original_name']}</h3>
+                    <p>Age: {int(row['age'])}</p>
+                    <p>Mins: {int(row['minutes_played'])}</p>
+                    <div class="value" style="font-size:1rem;">€{int(row['market_value_in_eur']):,}</div>
+                </div>
+            """, unsafe_allow_html=True)
 
 else:
-    st.subheader("🦅 Current U Cluj Roster Overview")
-    st.dataframe(df_master.head(10)[['original_name', 'position', 'age', 'minutes_played']], use_container_width=True, hide_index=True, height=300)
+    st.info("💡 Select a player from the roster above to generate the replacement wireframe.")
