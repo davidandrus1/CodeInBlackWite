@@ -14,7 +14,7 @@ st.set_page_config(
 
 # --- 2. Session State Initialization ---
 if 'active_page' not in st.session_state:
-    st.session_state.active_page = "🔍 SEARCH DATABASE" # Search is now the default!
+    st.session_state.active_page = "🔍 SEARCH DATABASE"
 if 'search_target_name' not in st.session_state:
     st.session_state.search_target_name = ""
 
@@ -23,7 +23,7 @@ st.markdown("""
     <style>
     .block-container { padding-top: 1.5rem; }
     
-    /* 🎯 THE SEGMENTED CONTROL TOGGLE (Looks like Chrome/Modern Tabs) */
+    /* 🎯 THE SEGMENTED CONTROL TOGGLE */
     div[role="radiogroup"] {
         display: flex;
         flex-direction: row;
@@ -53,6 +53,18 @@ st.markdown("""
     div[role="radiogroup"] [data-testid="stMarkdownContainer"] { margin-left: 0px !important; }
     div[role="radiogroup"] span[data-baseweb="radio"] { display: none !important; }
     
+    /* 🚨 CUSTOM CSS FOR GREEN PRIMARY BUTTONS 🚨 */
+    div.stButton > button[kind="primary"] {
+        background-color: #04b16d !important;
+        border-color: #04b16d !important;
+        color: white !important;
+        border-radius: 8px;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background-color: #218838 !important;
+        border-color: #1e7e34 !important;
+    }
+
     /* Card Styles */
     .scout-card {
         background-color: #0e1117; padding: 20px; border-radius: 10px;
@@ -60,7 +72,7 @@ st.markdown("""
         display: flex; flex-direction: column; justify-content: center;
     }
     .scout-card p { color: #ffffff; margin: 4px 0; font-size: 0.95rem; }
-    .scout-card .value { color: #ffffff; font-size: 1.2rem; font-weight: bold; margin-top: 10px; color: #00FFAA;}
+    .scout-card .value { color: #00FFAA; font-size: 1.2rem; font-weight: bold; margin-top: 10px;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -82,7 +94,7 @@ st.markdown("<h1 style='text-align: center;'>🦅 U Cluj - AI Scouting Platform<
 # --- 5. Main Frame Navigation ---
 selected_page = st.radio(
     "Navigation", 
-    ["🔍 SEARCH DATABASE", "📋 CURRENT SQUAD"], # Search is now the first tab!
+    ["🔍 SEARCH DATABASE", "📋 CURRENT SQUAD"],
     horizontal=True,
     label_visibility="collapsed",
     index=0 if st.session_state.active_page == "🔍 SEARCH DATABASE" else 1
