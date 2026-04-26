@@ -147,15 +147,20 @@ def render_search_tab(df_master, u_cluj_names):
             if 'market_value_in_eur' in display_df.columns:
                 display_df['Market Value'] = display_df['market_value_in_eur'].apply(format_currency)
             
-            display_cols = ['original_name', 'age', 'position', 'height', 'foot', 'Market Value', 'Performance_Index']
+            display_cols = ['original_name', 'age', 'position', 'height', 'foot', 'Market Value', 'Performance_Index', 'Growth_Potential']
             display_cols = [c for c in display_cols if c in display_df.columns]
             
             search_table = st.dataframe(
                 display_df[display_cols],
                 column_config={
-                    "original_name": "Player", 
-                    "Market Value": "Value",
-                    "Performance_Index": st.column_config.NumberColumn("Perf. Index", format="%.1f")
+                    "original_name": st.column_config.Column("Player", alignment="left"),
+                    "age": st.column_config.Column("Age", alignment="right"),
+                    "position": st.column_config.Column("Pos.", alignment="right"),
+                    "height": st.column_config.Column("Height", alignment="right"),
+                    "foot": st.column_config.Column("Foot", alignment="right"),
+                    "Market Value": st.column_config.Column("Value", alignment="right"),
+                    "Performance_Index": st.column_config.NumberColumn("Perf. Index", format="%.1f", alignment="right"),
+                    "Growth_Potential": st.column_config.NumberColumn("Potential", format="%.1f", alignment="right")
                 },
                 use_container_width=True, hide_index=True, selection_mode="single-row", on_select="rerun"
             )

@@ -226,7 +226,7 @@ def render_squad_tab(df_master, u_cluj_names):
                 fig.add_trace(go.Scatterpolar(
                     r=vals_a + [vals_a[0]], theta=labels + [labels[0]],
                     fill="toself", name=name_a,
-                    line=dict(color="#FFFB0C", width=3), fillcolor="rgba(255, 252, 56, 0.3)"
+                    line=dict(color="#FF0800", width=3), fillcolor="rgba(255, 8, 0, 0.3)"
                 ))
                 fig.add_trace(go.Scatterpolar(
                     r=vals_b + [vals_b[0]], theta=labels + [labels[0]],
