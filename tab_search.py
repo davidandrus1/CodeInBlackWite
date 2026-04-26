@@ -3,6 +3,7 @@ import pandas as pd
 import google.generativeai as genai
 import json
 from st_keyup import st_keyup  
+import os 
 
 def format_currency(val):
     try:
@@ -57,7 +58,6 @@ def render_search_tab(df_master, u_cluj_names):
 
     with left_panel:
         st.subheader("Search Filters")
-        api_key = st.text_input("Gemini API Key:", type="password")
         st.divider()
         
         default_search = st.session_state.get('search_target_name', '')
@@ -79,14 +79,14 @@ def render_search_tab(df_master, u_cluj_names):
         
         foot_options = ["Any", "Right", "Left", "Both"]
         selected_foot = st.selectbox("Preferred Foot:", foot_options, index=0)
-        min_minutes = st.number_input("Min Minutes Played:", min_value=0, value=200, step=50)
+        min_minutes = st.number_input("Min Minutes Played:", min_value=0, value=0, step=50)
 
         filtered_df = apply_scouting_filters(
             scouting_pool, search_name, age_range, selected_pos, max_value, height_range, selected_foot, min_minutes
         )
 
-        if not filtered_df.empty and 'Growth_Potential' in filtered_df.columns:
-            filtered_df = filtered_df.sort_values(by='Growth_Potential', ascending=False)
+        if not filtered_df.empty and 'Performance_Index' in filtered_df.columns:
+            filtered_df = filtered_df.sort_values(by='Performance_Index', ascending=False)
 
         st.divider()
 
@@ -100,8 +100,10 @@ def render_search_tab(df_master, u_cluj_names):
             st.session_state.last_filtered_count = len(filtered_df)
 
         if st.button("Generate AI Scout Report", type="primary", use_container_width=True):
+            api_key = os.environ.get("API_KEY")
+            
             if not api_key:
-                st.warning("Please provide a Gemini API Key.")
+                st.warning("⚠️ Please set the 'API_KEY' environment variable to generate insights.")
             else:
                 safe_values = pd.to_numeric(filtered_df['market_value_in_eur'], errors='coerce').fillna(0)
                 ai_pool = filtered_df[safe_values > 0]
@@ -145,12 +147,16 @@ def render_search_tab(df_master, u_cluj_names):
             if 'market_value_in_eur' in display_df.columns:
                 display_df['Market Value'] = display_df['market_value_in_eur'].apply(format_currency)
             
-            display_cols = ['original_name', 'age', 'position', 'height', 'foot', 'Market Value', 'Growth_Potential']
+            display_cols = ['original_name', 'age', 'position', 'height', 'foot', 'Market Value', 'Performance_Index']
             display_cols = [c for c in display_cols if c in display_df.columns]
             
             search_table = st.dataframe(
                 display_df[display_cols],
-                column_config={"original_name": "Player", "Market Value": "Value"},
+                column_config={
+                    "original_name": "Player", 
+                    "Market Value": "Value",
+                    "Performance_Index": st.column_config.NumberColumn("Perf. Index", format="%.1f")
+                },
                 use_container_width=True, hide_index=True, selection_mode="single-row", on_select="rerun"
             )
 
@@ -163,6 +169,7 @@ def render_search_tab(df_master, u_cluj_names):
                 st.markdown(f"### Deep Dive Tactical Stats: {selected_player['original_name']}")
                 
                 sc1, sc2 = st.columns(2)
+                
                 growth_val = selected_player.get('Growth_Potential', 0)
                 sc1.metric("Growth Potential", f"{float(growth_val):.1f}")
                 sc2.metric("Minutes Played", selected_player.get('minutes_played', 0))
