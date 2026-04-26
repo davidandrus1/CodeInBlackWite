@@ -7,16 +7,19 @@ from data_loader import load_all_matches, aggregate_players
 from feature_engineering import get_features_for_position, handle_missing_values, FEATURES_PER_POSITION
 from normalization import normalize_position
 
-# ==========================================
-# 🚨 BULLETPROOF ABSOLUTE PATHING
-# ==========================================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "..", "Date - meciuri")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))   # /Backend/models/
+BACKEND_DIR = os.path.dirname(BASE_DIR)                 # /Backend/
+ROOT_DIR = os.path.dirname(BACKEND_DIR)                 # / (Root)
+
+DATA_DIR = os.path.join(ROOT_DIR, "Data", "Date - meciuri")
+PLAYERS_JSON_PATH = os.path.join(DATA_DIR, "players (1).json")
+
 SAVED_MODELS_DIR = os.path.join(BASE_DIR, "saved_models")
 SAVED_DATA_DIR = os.path.join(BASE_DIR, "saved_data")
 
 os.makedirs(SAVED_MODELS_DIR, exist_ok=True)
 os.makedirs(SAVED_DATA_DIR, exist_ok=True)
+
 
 df_matches = load_all_matches(DATA_DIR)
 df_players = aggregate_players(df_matches, min_minutes=45)

@@ -147,8 +147,17 @@ def process_data(players_file, stats_dir):
         df_final[col] = df_final[col].fillna(0)
         df_final[f'{col}_p90'] = df_final.apply(lambda row: (row[col] / row['minutes_played'] * 90) if row['minutes_played'] > 0 else 0.0, axis=1).round(2)
         
+    # ==========================================
+    # 🚨 DYNAMIC PATHING ENGINE (ADDED HERE)
+    # ==========================================
+    BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+    ROOT_DIR = os.path.dirname(BACKEND_DIR)
+    DATA_DIR = os.path.join(ROOT_DIR, "Data")  # 🚨 Capital 'D' for your folder!
+    
     try:
-        df_tm = pd.read_csv("players.csv", low_memory=False)
+        # 🚨 Tell Pandas to look inside the Data folder
+        players_csv_path = os.path.join(DATA_DIR, "players.csv")
+        df_tm = pd.read_csv(players_csv_path, low_memory=False)
         df_tm = df_tm[['name', 'market_value_in_eur']].dropna()
         
         def sanitize_name(name_str):
@@ -182,7 +191,9 @@ def process_data(players_file, stats_dir):
         df_final['market_value_in_eur'] = pd.NA
 
     try:
-        df_ucluj = pd.read_csv("u_cluj_current_squad.csv")
+        # 🚨 Tell Pandas to look inside the Data folder
+        ucluj_csv_path = os.path.join(DATA_DIR, "u_cluj_current_squad.csv")
+        df_ucluj = pd.read_csv(ucluj_csv_path)
         def clean_currency(val):
             if pd.isna(val) or val == 'N/A': return pd.NA
             return float(str(val).replace('€', '').replace(',', ''))

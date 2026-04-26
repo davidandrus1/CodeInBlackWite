@@ -1,8 +1,23 @@
+import sys
+import os
 import streamlit as st
 import pandas as pd
-from data_processor import process_data
+
+FRONTEND_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(FRONTEND_DIR)
+
+if ROOT_DIR not in sys.path:
+    sys.path.append(ROOT_DIR)
+
+from Backend.data_processor import process_data
 from tab_squad import render_squad_tab
 from tab_search import render_search_tab
+
+DATA_DIR = os.path.join(ROOT_DIR, "Data")
+U_CLUJ_CSV = os.path.join(DATA_DIR, "u_cluj_current_squad.csv")
+
+MECIURI_DIR = os.path.join(DATA_DIR, "Date - meciuri")
+PLAYERS_JSON = os.path.join(MECIURI_DIR, "players (1).json")
 
 st.set_page_config(
     page_title="U-Scout", 
@@ -71,10 +86,11 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 @st.cache_data
+@st.cache_data
 def load_all_data():
-    df_perf = process_data("Date - meciuri/players (1).json", "Date - meciuri")
+    df_perf = process_data(PLAYERS_JSON, MECIURI_DIR)
     try:
-        u_cluj_list = pd.read_csv("u_cluj_current_squad.csv")
+        u_cluj_list = pd.read_csv(U_CLUJ_CSV)
     except:
         u_cluj_list = pd.DataFrame(columns=['Player ID']) 
     return df_perf, u_cluj_list

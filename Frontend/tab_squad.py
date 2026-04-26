@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 try:
-    from models.similarity import (
+    from Backend.models.similarity import (
         compute_similarity, get_player_position_by_id, 
         get_player_name_by_id, get_players_for_position_excluding
     )

@@ -1,13 +1,19 @@
 import os
-import json
 import pickle
-import numpy as np
 import pandas as pd
-from scipy.stats import pearsonr
-from sklearn.metrics.pairwise import cosine_similarity
-from functools import lru_cache # 🚨 ADDED FOR I/O OPTIMIZATION
+import numpy as np
+from functools import lru_cache
 
-from models.feature_engineering import (
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BACKEND_DIR = os.path.dirname(BASE_DIR)
+ROOT_DIR = os.path.dirname(BACKEND_DIR)
+
+SAVED_DATA_DIR = os.path.join(BASE_DIR, "saved_data")
+SAVED_MODELS_DIR = os.path.join(BASE_DIR, "saved_models")
+
+json_path = os.path.join(ROOT_DIR, "Data", "Date - meciuri", "players (1).json")
+
+from Backend.models.feature_engineering import (
     TOP_FEATURES_PER_POSITION,
     STYLE_FEATURES_PER_POSITION,
     QUALITY_FEATURES_PER_POSITION,
