@@ -11,6 +11,8 @@ def load_all_matches(data_path: str) -> pd.DataFrame:
     records = []
 
     for filename in os.listdir(data_path):
+        if filename in ["players (1).json", "players_synthetic.json"]:
+            continue
         if not filename.endswith(".json"):
             continue
         if filename == "players (1).json":

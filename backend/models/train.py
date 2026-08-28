@@ -22,13 +22,12 @@ os.makedirs("saved_data", exist_ok=True)
 df_matches = load_all_matches("../../Date - meciuri/")
 df_players = aggregate_players(df_matches, min_minutes=45)
 
-
+sintetici_in_matches = df_players[df_players["playerId"] >= 9_000_001]
+print(f"[DEBUG] Jucători sintetici după agregare: {len(sintetici_in_matches)}")
+print(sintetici_in_matches[["playerId", "totalMinutes"]].head())
 # ─────────────────────────────────────────────
 # PASUL 2 — Construiești lookup-ul din players (1).json
-# wyId  →  shortName  (pentru afișare)
-# shortName → wyId   (pentru căutare din UI)
 # ─────────────────────────────────────────────
-
 PLAYERS_JSON_PATH = "../../Date - meciuri/players (1).json"
 
 with open(PLAYERS_JSON_PATH, "r", encoding="utf-8") as f:
@@ -38,13 +37,30 @@ id_to_name = {}
 name_to_id = {}
 
 for player in players_raw["players"]:
-    wy_id = player["wyId"]
+    wy_id      = player["wyId"]
     short_name = player["shortName"].strip()
     id_to_name[wy_id] = short_name
-    # În caz de duplicate de shortName, păstrezi primul
     if short_name not in name_to_id:
         name_to_id[short_name] = wy_id
 
+print(f"[OK] {len(id_to_name)} jucători reali indexați.")
+
+# ── Adaugă jucătorii sintetici în lookup ──
+SYNTHETIC_JSON_PATH = "../../Date - meciuri/players_synthetic.json"
+if os.path.exists(SYNTHETIC_JSON_PATH):
+    with open(SYNTHETIC_JSON_PATH, "r", encoding="utf-8") as f:
+        synthetic_raw = json.load(f)
+    for player in synthetic_raw["players"]:
+        wy_id      = player["wyId"]
+        short_name = player["shortName"].strip()
+        id_to_name[wy_id] = short_name
+        if short_name not in name_to_id:
+            name_to_id[short_name] = wy_id
+    print(f"[OK] {len(synthetic_raw['players'])} jucători sintetici adăugați în lookup.")
+else:
+    print("[WARN] players_synthetic.json nu a fost găsit.")
+
+# Salvezi lookup-ul complet
 lookup = {
     "id_to_name": id_to_name,
     "name_to_id": name_to_id,
@@ -53,14 +69,19 @@ lookup = {
 with open("saved_data/players_lookup.pkl", "wb") as f:
     pickle.dump(lookup, f)
 
-print(f"[OK] Lookup salvat: {len(id_to_name)} jucători indexați.")
+print(f"[OK] Lookup salvat: {len(id_to_name)} jucători indexați total.")
 
 
 # ─────────────────────────────────────────────
 # PASUL 3 — Adaugi coloana 'name' pe df_players
-# (din wyId → shortName, util pentru similarity engine)
 # ─────────────────────────────────────────────
 df_players["name"] = df_players["playerId"].map(id_to_name)
+
+n_fara_nume = df_players["name"].isna().sum()
+if n_fara_nume > 0:
+    print(f"[WARN] {n_fara_nume} jucători fără nume — excluși din pkl-uri.")
+
+df_players = df_players[df_players["name"].notna()].copy()
 
 
 # ─────────────────────────────────────────────
@@ -79,13 +100,10 @@ for pozitie in FEATURES_PER_POSITION.keys():
 
     features = [c for c in df_pozitie.columns if c != "playerId"]
 
-    # Normalizezi + salvezi scaler-ul (deja făceai asta)
     df_scaled = normalize_position(df_pozitie, pozitie, features)
 
-    # ── NOU: adaugi coloana 'name' pe df_scaled pentru lookup rapid ──
     df_scaled["name"] = df_scaled["playerId"].map(id_to_name)
 
-    # ── NOU: salvezi DataFrame-ul normalizat pe disc ──
     df_scaled.to_pickle(f"saved_data/normalized_{pozitie}.pkl")
 
     print(f"[OK] {pozitie}: {len(df_scaled)} jucători procesați și salvați.")

@@ -478,3 +478,115 @@ def get_features_for_position(df: pd.DataFrame, position: str) -> pd.DataFrame:
 
 def handle_missing_values(df: pd.DataFrame) -> pd.DataFrame:
     return df.fillna(0)
+
+
+# ─────────────────────────────────────────────
+# PERFORMANCE VOLUME FEATURES — total sezon
+# Din df_master (coloane fără prefix)
+# ─────────────────────────────────────────────
+
+PERFORMANCE_VOLUME_FEATURES_PER_POSITION = {
+
+    "portar": {
+        "normal":  ["gkSaves", "gkExits", "gkAerialDuels"],
+        "inverse": ["gkConcededGoals"],  # mai puține = mai bun
+    },
+
+    "fundas_central": {
+        "normal":  ["defensiveDuels", "interceptions", "clearances",
+                    "aerialDuels", "shotsBlocked"],
+        "inverse": [],
+    },
+
+    "fundas_lateral": {
+        "normal":  ["crosses", "interceptions", "progressiveRun",
+                    "defensiveDuels", "assists", "ballRecoveries"],
+        "inverse": [],
+    },
+
+    "mijlocas_defensiv": {
+        "normal":  ["interceptions", "ballRecoveries",
+                    "counterpressingRecoveries", "defensiveDuels", "passes"],
+        "inverse": [],
+    },
+
+    "mijlocas_central": {
+        "normal":  ["keyPasses", "passes", "interceptions",
+                    "ballRecoveries", "goals", "assists"],
+        "inverse": [],
+    },
+
+    "mijlocas_ofensiv": {
+        "normal":  ["keyPasses", "goals", "assists", "shotAssists",
+                    "touchInBox", "progressiveRun"],
+        "inverse": [],
+    },
+
+    "atacant_lateral": {
+        "normal":  ["goals", "assists", "shots", "progressiveRun",
+                    "crosses", "opponentHalfRecoveries"],
+        "inverse": [],
+    },
+
+    "atacant_central": {
+        "normal":  ["goals", "shots", "touchInBox",
+                    "headShots", "aerialDuels"],
+        "inverse": [],
+    },
+}
+
+
+# ─────────────────────────────────────────────
+# PERFORMANCE AVG FEATURES — per 90 min
+# Din pkl (avg_ prefix)
+# ─────────────────────────────────────────────
+
+PERFORMANCE_AVG_FEATURES_PER_POSITION = {
+
+    "portar": {
+        "normal":  ["avg_gkSaves", "avg_gkExits", "avg_gkAerialDuels"],
+        "inverse": ["avg_gkConcededGoals"],
+    },
+
+    "fundas_central": {
+        "normal":  ["avg_defensiveDuels", "avg_interceptions",
+                    "avg_clearances", "avg_aerialDuels"],
+        "inverse": [],
+    },
+
+    "fundas_lateral": {
+        "normal":  ["avg_crosses", "avg_interceptions", "avg_progressiveRun",
+                    "avg_ballRecoveries", "avg_defensiveDuels"],
+        "inverse": [],
+    },
+
+    "mijlocas_defensiv": {
+        "normal":  ["avg_interceptions", "avg_ballRecoveries",
+                    "avg_counterpressingRecoveries", "avg_defensiveDuels"],
+        "inverse": [],
+    },
+
+    "mijlocas_central": {
+        "normal":  ["avg_keyPasses", "avg_passes", "avg_interceptions",
+                    "avg_ballRecoveries", "avg_goals", "avg_assists"],
+        "inverse": [],
+    },
+
+    "mijlocas_ofensiv": {
+        "normal":  ["avg_keyPasses", "avg_goals", "avg_assists",
+                    "avg_shotAssists", "avg_touchInBox", "avg_progressiveRun"],
+        "inverse": [],
+    },
+
+    "atacant_lateral": {
+        "normal":  ["avg_goals", "avg_assists", "avg_progressiveRun",
+                    "avg_crosses", "avg_opponentHalfRecoveries"],
+        "inverse": [],
+    },
+
+    "atacant_central": {
+        "normal":  ["avg_goals", "avg_shots",
+                    "avg_touchInBox", "avg_aerialDuels"],
+        "inverse": [],
+    },
+}

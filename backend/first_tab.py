@@ -7,8 +7,17 @@ from models.similarity import (
     get_player_position_by_id,
     get_player_name_by_id,
     get_players_for_position_excluding,
+    get_similar_better_players,
 )
 
+def _get_market_value(df_master, pid_str: str) -> float:
+    row = df_master[df_master['player_id'].astype(str) == pid_str]
+    if row.empty:
+        return 0.0
+    try:
+        return float(row.iloc[0]['market_value_in_eur'])
+    except (ValueError, TypeError):
+        return 0.0
 
 def render_first_tab(df_master, u_cluj_names):
 
@@ -22,91 +31,145 @@ def render_first_tab(df_master, u_cluj_names):
     )
     roster_df = roster_df.sort_values(by=['position_cat', 'original_name'])
 
-    st.subheader(f"U Cluj Roster ({len(roster_df)} Players Matched)")
+    # ── Session State ──
+    if "roster_expanded" not in st.session_state:
+        st.session_state.roster_expanded = True
 
-    event = st.dataframe(
-        roster_df[['original_name', 'age', 'position', 'market_value_in_eur']],
-        column_config={
-            "original_name": "Name",
-            "age": "Age",
-            "position": "Position",
-            "market_value_in_eur": st.column_config.NumberColumn("Value", format="€%d")
-        },
-        use_container_width=True,
-        hide_index=True,
-        selection_mode="single-row",
-        on_select="rerun"
-    )
+    # ── Roster Table în Expander ──
+    with st.expander(
+        f"📋 U Cluj Roster ({len(roster_df)} Players) — "
+        f"{'click to expand' if not st.session_state.roster_expanded else 'click to collapse'}",
+        expanded=st.session_state.roster_expanded
+    ):
+        event = st.dataframe(
+            roster_df[['original_name', 'age', 'position', 'market_value_in_eur']],
+            column_config={
+                "original_name": "Name",
+                "age": "Age",
+                "position": "Position",
+                "market_value_in_eur": st.column_config.NumberColumn("Value", format="€%d")
+            },
+            use_container_width=True,
+            hide_index=True,
+            selection_mode="single-row",
+            on_select="rerun"
+        )
+        selected_rows = event.get("selection", {}).get("rows", [])
 
-    selected_rows = event.get("selection", {}).get("rows", [])
+        if selected_rows:
+            st.session_state.roster_expanded = False
+            st.session_state.selected_idx = selected_rows[0]
 
-    if not selected_rows:
-        st.info("Select a player from the roster to start analysis.")
+        if not selected_rows and "selected_idx" not in st.session_state:
+            st.info("Select a player from the roster to start analysis.")
+            return
+
+    # ── Buton Select Different Player ──
+    if not st.session_state.roster_expanded:
+        if st.button("🔄 Select Different Player"):
+            st.session_state.roster_expanded = True
+            if "selected_idx" in st.session_state:
+                del st.session_state.selected_idx
+            st.rerun()
+
+    if "selected_idx" not in st.session_state:
         return
 
-    # ── Jucătorul selectat ──
-    selected_idx = selected_rows[0]
-    target = roster_df.iloc[selected_idx]
+    target      = roster_df.iloc[st.session_state.selected_idx]
+    target_id   = str(target['player_id'])
+    position_ml = get_player_position_by_id(target_id)
+    name_a      = get_player_name_by_id(target_id)
 
     st.divider()
-    st.header(f"Replacement Analysis: {target['original_name']}")
+    st.header(f"Analysis: {target['original_name']}")
 
-    # Pool fără jucătorii U Cluj
-    replacements_pool = df_master[
-        ~df_master['player_id'].astype(str).isin(u_cluj_ids)
-    ]
+    # ==========================================
+    # 🤖 SIMILAR & BETTER PLAYERS
+    # ==========================================
+    st.subheader("🤖 Similar & Better Players")
+    st.markdown(
+        "Jucători cu **stil similar** dar **performanță mai bună** — "
+        "sortați de la cel mai bun la stânga."
+    )
 
-    u21_df = replacements_pool[
-        (replacements_pool['position'] == target['position']) &
-        (replacements_pool['age'].astype(float) <= 21)
-    ].sort_values('minutes_played', ascending=False).head(1)
+    if not position_ml:
+        st.warning("Poziția ML nu a putut fi detectată pentru acest jucător.")
+    else:
+        with st.spinner("Calculând similaritate și performanță..."):
+            better_players = get_similar_better_players(
+                player_id=target_id,
+                position_ml=position_ml,
+                exclude_ids=u_cluj_ids,
+                df_master=df_master,
+                top_n=5,
+                min_similarity=50.0,
+            )
 
-    liga_df = replacements_pool[
-        replacements_pool['position'] == target['position']
-    ].sort_values('market_value_in_eur', ascending=False).head(5)
+            better_players = [
+            p for p in better_players
+            if _get_market_value(df_master, str(p["playerId"])) < 1_000_000
+            ]
+ 
+            u21_players = get_similar_better_players(
+                player_id=target_id,
+                position_ml=position_ml,
+                exclude_ids=u_cluj_ids,
+                df_master=df_master,
+                top_n=1,
+                min_similarity=30.0,
+                max_age=21,
+            )
 
-    c1, c2, c3 = st.columns(3)
+            u21_players = [
+            p for p in u21_players
+            if _get_market_value(df_master, str(p["playerId"])) < 1_000_000
+            ]
 
-    with c1:
-        st.markdown("### 👤 Selected")
-        st.metric("Name", target['original_name'])
-        st.metric("Value", f"€{int(float(target['market_value_in_eur'])):,}")
-
-    with c2:
-        st.markdown("### ✨ Top U21 Prospect")
-        if not u21_df.empty:
-            p = u21_df.iloc[0]
-            st.markdown(f"""
-                <div class="scout-card">
-                    <h3>{p['original_name']}</h3>
-                    <p>Age: {int(float(p['age']))} | Mins: {int(float(p['minutes_played']))}</p>
-                    <div class="value">€{int(float(p['market_value_in_eur'])):,}</div>
-                </div>""", unsafe_allow_html=True)
+        if not better_players and not u21_players:
+            st.info("Nu s-au găsit jucători cu stil similar și performanță mai bună.")
         else:
-            st.warning("No U21 prospects found for this position.")
+            # ── Top players ──
+            if better_players:
+                cols = st.columns(len(better_players))
+                for i, player in enumerate(better_players):
+                    pid_str   = str(player["playerId"])
+                    meta      = df_master[df_master['player_id'].astype(str) == pid_str]
+                    orig_name = meta.iloc[0]['original_name'] if not meta.empty else player["name"]
+                    age_str   = str(int(float(meta.iloc[0]['age']))) if not meta.empty and pd.notnull(meta.iloc[0]['age']) else "N/A"
+                    val_str   = f"€{int(float(meta.iloc[0]['market_value_in_eur'])):,}" if not meta.empty and float(meta.iloc[0]['market_value_in_eur']) > 0 else "N/A"
+                    diff      = round(player['performance_score'] - player['performance_target'], 1)
 
-    with c3:
-        st.markdown("### 🏟️ Liga Replacement 1")
-        if not liga_df.empty:
-            r = liga_df.iloc[0]
-            st.markdown(f"""
-                <div class="scout-card">
-                    <h3>{r['original_name']}</h3>
-                    <p>Age: {int(float(r['age']))} | Mins: {int(float(r['minutes_played']))}</p>
-                    <div class="value">€{int(float(r['market_value_in_eur'])):,}</div>
-                </div>""", unsafe_allow_html=True)
+                    with cols[i]:
+                        st.markdown(f"""
+                            <div class="scout-card">
+                                <h3>{orig_name}</h3>
+                                <p>Age: {age_str}</p>
+                                <p>🎯 Similarity: {player['similarity_score']}%</p>
+                                <p>📈 +{diff}% performanță</p>
+                                <div class="value">{val_str}</div>
+                            </div>""", unsafe_allow_html=True)
 
-    if len(liga_df) > 1:
-        st.markdown("### 📋 Additional Options")
-        grid = st.columns(4)
-        for i, (_, row) in enumerate(liga_df.iloc[1:5].iterrows()):
-            with grid[i]:
-                st.markdown(f"""
-                    <div class="scout-card">
-                        <h3>{row['original_name']}</h3>
-                        <p>Age: {int(float(row['age']))}</p>
-                        <div class="value">€{int(float(row['market_value_in_eur'])):,}</div>
-                    </div>""", unsafe_allow_html=True)
+            # ── Card U21 ──
+            if u21_players:
+                st.markdown("### ✨ Top U21 Similar")
+                u21 = u21_players[0]
+                pid_str   = str(u21["playerId"])
+                meta      = df_master[df_master['player_id'].astype(str) == pid_str]
+                orig_name = meta.iloc[0]['original_name'] if not meta.empty else u21["name"]
+                age_str   = str(int(float(meta.iloc[0]['age']))) if not meta.empty and pd.notnull(meta.iloc[0]['age']) else "N/A"
+                val_str   = f"€{int(float(meta.iloc[0]['market_value_in_eur'])):,}" if not meta.empty and float(meta.iloc[0]['market_value_in_eur']) > 0 else "N/A"
+                diff      = round(u21['performance_score'] - u21['performance_target'], 1)
+
+                col_u21, _ = st.columns([1, 3])
+                with col_u21:
+                    st.markdown(f"""
+                        <div class="scout-card">
+                            <h3>{orig_name}</h3>
+                            <p>Age: {age_str} ⭐ U21</p>
+                            <p>🎯 Similarity: {u21['similarity_score']}%</p>
+                            <p>📈 +{diff}% performanță</p>
+                            <div class="value">{val_str}</div>
+                        </div>""", unsafe_allow_html=True)
 
     # ==========================================
     # ⚔️ COMPATIBILITY ENGINE
@@ -118,31 +181,20 @@ def render_first_tab(df_master, u_cluj_names):
         "de **aceeași poziție** și vezi gradul de similaritate."
     )
 
-    # Găsim position_ml și shortName după Player ID
-    target_id = str(target['player_id'])
-    position_ml = get_player_position_by_id(target_id)
-    name_a      = get_player_name_by_id(target_id)
-
     if not position_ml or not name_a:
-        st.warning(
-            "Jucătorul selectat nu are date suficiente în sistemul ML. "
-            "Verifică că train.py a fost rulat."
-        )
+        st.warning("Jucătorul selectat nu are date suficiente în sistemul ML.")
         return
 
-    # Jucători disponibili — exclus U Cluj
     available_players = get_players_for_position_excluding(position_ml, u_cluj_ids)
 
     if not available_players:
-        st.warning(f"Nu există jucători disponibili în ligă pentru poziția {position_ml}.")
+        st.warning(f"Nu există jucători disponibili pentru poziția {position_ml}.")
         return
 
     col_a, col_b = st.columns(2)
-
     with col_a:
         st.metric("Jucător A", target['original_name'])
         st.caption(f"Poziție ML: {position_ml}")
-
     with col_b:
         player_b = st.selectbox(
             "🔍 Alege Jucătorul B pentru comparație:",
@@ -165,19 +217,16 @@ def render_first_tab(df_master, u_cluj_names):
             st.error(result["error"])
             return
 
-        # ── Scor global ──
         score = result["similarity_score"]
         color = "🟢" if score >= 75 else "🟡" if score >= 50 else "🔴"
         st.markdown(f"## {color} Similarity Score: **{score}/100**")
 
-        # ── Scoruri detaliate ──
         scores = result["scores"]
         c1, c2, c3 = st.columns(3)
         c1.metric("🏋️ Fizic", f"{scores['fizic']}/100" if scores['fizic'] else "N/A")
         c2.metric("🎨 Stil", f"{scores['stil']}/100")
         c3.metric("🎯 Calitate", f"{scores['calitate']}/100")
 
-        # ── Raport text ──
         report = result["report"]
         st.markdown("#### 📋 Raport Scout")
         st.info(report["fizic"])
@@ -192,7 +241,6 @@ def render_first_tab(df_master, u_cluj_names):
             for d in report["differences"]:
                 st.markdown(d)
 
-        # ── Spider Chart ──
         labels = result["labels"]
         vals_a = list(result["radar_values_a"].values())
         vals_b = list(result["radar_values_b"].values())
@@ -222,7 +270,6 @@ def render_first_tab(df_master, u_cluj_names):
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        # ── Breakdown tabel ──
         st.markdown("#### 📊 Detaliu per atribut")
         breakdown_rows = []
         for label, val_a, val_b in zip(labels, vals_a, vals_b):

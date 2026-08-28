@@ -51,6 +51,13 @@ def load_all_data():
 with st.spinner('Loading Database...'):
     df_master, u_cluj_names = load_all_data()
 
+with st.spinner('Loading Database...'):
+    df_master, u_cluj_names = load_all_data()
+
+# DEBUG TEMPORAR
+st.write(f"Total jucători în df_master: {len(df_master)}")
+st.write(f"Primii 5: {df_master['original_name'].head().tolist()}")
+
 # --- 4. Main Interface & Tabs ---
 st.title("🦅 U Cluj - Roster & Replacement Finder")
 

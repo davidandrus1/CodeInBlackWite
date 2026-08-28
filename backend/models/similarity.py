@@ -26,12 +26,22 @@ def _base_dir() -> str:
 
 
 def _load_normalized(position: str) -> pd.DataFrame:
-    path = os.path.join(_base_dir(), "saved_data", f"normalized_{position}.pkl")
-    try:
-        return pd.read_pickle(path)
-    except FileNotFoundError:
+    """
+    Încarcă datele pentru o poziție.
+    Preferă augmented_{position}.pkl (real + sintetic) dacă există.
+    Fallback la normalized_{position}.pkl (doar real).
+    """
+    base = _base_dir()
+    aug_path  = os.path.join(base, "saved_data", f"augmented_{position}.pkl")
+    real_path = os.path.join(base, "saved_data", f"normalized_{position}.pkl")
+
+    if os.path.exists(aug_path):
+        return pd.read_pickle(aug_path)
+    elif os.path.exists(real_path):
+        return pd.read_pickle(real_path)
+    else:
         raise FileNotFoundError(
-            f"Fișierul pentru {position} nu există. Rulează train.py."
+            f"Niciun fișier găsit pentru {position}. Rulează train.py și augmentation.py."
         )
 
 
@@ -442,3 +452,177 @@ def get_players_for_position_excluding(position: str, exclude_ids: list) -> list
         return sorted(df_filtered["name"].dropna().unique().tolist())
     except FileNotFoundError:
         return []
+
+
+def _compute_performance_score(
+    row_pkl: pd.Series,
+    row_master: pd.Series,
+    position_ml: str,
+    df_master_pos: pd.DataFrame,
+) -> float:
+    """
+    Calculează scorul de performanță combinat pe 3 componente:
+        33% Volume (total sezon, normalizat față de toți jucătorii din poziție)
+        33% Avg per 90 (din pkl, deja normalizat)
+        33% Eficiență (pct_* și xg* din pkl)
+
+    Returnează scor 0-1.
+    """
+    from sklearn.preprocessing import MinMaxScaler
+    from models.feature_engineering import (
+        PERFORMANCE_VOLUME_FEATURES_PER_POSITION,
+        PERFORMANCE_AVG_FEATURES_PER_POSITION,
+        QUALITY_FEATURES_PER_POSITION,
+    )
+
+    # ── 1. VOLUME ──
+    vol_config  = PERFORMANCE_VOLUME_FEATURES_PER_POSITION.get(position_ml, {})
+    vol_normal  = [f for f in vol_config.get("normal", []) if f in df_master_pos.columns]
+    vol_inverse = [f for f in vol_config.get("inverse", []) if f in df_master_pos.columns]
+    vol_all     = vol_normal + vol_inverse
+
+    vol_score = 0.0
+    if vol_all and not df_master_pos.empty:
+        scaler     = MinMaxScaler()
+        df_scaled  = pd.DataFrame(
+            scaler.fit_transform(df_master_pos[vol_all].fillna(0)),
+            columns=vol_all,
+            index=df_master_pos.index,
+        )
+        pid_str = str(int(row_pkl["playerId"]))
+        match   = df_master_pos[df_master_pos["player_id"].astype(str) == pid_str]
+
+        if not match.empty:
+            idx      = match.index[0]
+            scores_v = []
+            for f in vol_normal:
+                if f in df_scaled.columns:
+                    scores_v.append(float(df_scaled.loc[idx, f]))
+            for f in vol_inverse:
+                if f in df_scaled.columns:
+                    scores_v.append(1.0 - float(df_scaled.loc[idx, f]))
+            vol_score = float(np.mean(scores_v)) if scores_v else 0.0
+
+    # ── 2. AVG per 90 ──
+    avg_config  = PERFORMANCE_AVG_FEATURES_PER_POSITION.get(position_ml, {})
+    avg_normal  = [f for f in avg_config.get("normal", []) if f in row_pkl.index]
+    avg_inverse = [f for f in avg_config.get("inverse", []) if f in row_pkl.index]
+
+    scores_avg = []
+    for f in avg_normal:
+        scores_avg.append(float(row_pkl.get(f, 0)))
+    for f in avg_inverse:
+        scores_avg.append(1.0 - float(row_pkl.get(f, 0)))
+    avg_score = float(np.mean(scores_avg)) if scores_avg else 0.0
+
+    # ── 3. EFICIENȚĂ ──
+    eff_feats  = [f for f in QUALITY_FEATURES_PER_POSITION.get(position_ml, [])
+                  if f in row_pkl.index]
+    eff_score  = float(np.mean([float(row_pkl.get(f, 0)) for f in eff_feats])) \
+                 if eff_feats else 0.0
+
+    return (vol_score + avg_score + eff_score) / 3.0
+
+
+def get_similar_better_players(
+    player_id,
+    position_ml: str,
+    exclude_ids: list,
+    df_master: pd.DataFrame,
+    top_n: int = 5,
+    min_similarity: float = 50.0,
+    max_age: int = None,
+) -> list:
+    """
+    Găsește jucători cu stil similar DAR performanță mai bună.
+
+    Performance = 33% Volume + 33% Avg p90 + 33% Eficiență
+    Similarity  = Pearson pe STYLE_FEATURES
+
+    max_age — filtrare opțională pentru U21 etc.
+
+    Returns lista sortată după performance_score descrescător.
+    """
+    try:
+        df = _load_normalized(position_ml)
+    except FileNotFoundError:
+        return []
+
+    try:
+        pid = int(player_id)
+    except (ValueError, TypeError):
+        return []
+
+    target_row_df = df[df["playerId"] == pid]
+    if target_row_df.empty:
+        return []
+    target_pkl = target_row_df.iloc[0]
+
+    # df_master filtrat la jucătorii din această poziție
+    pkl_ids       = df["playerId"].tolist()
+    df_master_pos = df_master[
+        df_master["player_id"].astype(str).isin([str(x) for x in pkl_ids])
+    ].copy()
+
+    # Stil — vectorul țintei
+    style_feats = [
+        f for f in STYLE_FEATURES_PER_POSITION.get(position_ml, [])
+        if f in df.columns
+    ]
+    if not style_feats:
+        return []
+    target_vec = _extract_features(target_pkl, style_feats)
+
+    # Performanța țintei
+    target_master_row = df_master[df_master["player_id"].astype(str) == str(pid)]
+    if target_master_row.empty:
+        return []
+    target_perf = _compute_performance_score(
+        target_pkl, target_master_row.iloc[0], position_ml, df_master_pos
+    )
+
+    # Pool — fără U Cluj și fără jucătorul selectat
+    exclude = [int(x) for x in exclude_ids if str(x).strip().isdigit()]
+    df_pool = df[~df["playerId"].isin(exclude)].copy()
+    df_pool = df_pool[df_pool["playerId"] != pid]
+
+    results = []
+    for _, row in df_pool.iterrows():
+        pid_str    = str(int(row["playerId"]))
+        row_master = df_master[df_master["player_id"].astype(str) == pid_str]
+        if row_master.empty:
+            continue
+
+        # Filtru vârstă (opțional)
+        if max_age is not None:
+            try:
+                age = float(row_master.iloc[0]["age"])
+                if age > max_age:
+                    continue
+            except (ValueError, TypeError):
+                continue
+
+        # Similarity
+        vec = _extract_features(row, style_feats)
+        sim = _compute_pearson(target_vec, vec)
+        if sim < min_similarity:
+            continue
+
+        # Performanță
+        perf = _compute_performance_score(
+            row, row_master.iloc[0], position_ml, df_master_pos
+        )
+        if perf <= target_perf:
+            continue
+
+        results.append({
+            "name":               str(row.get("name", "")),
+            "playerId":           int(row["playerId"]),
+            "similarity_score":   round(sim, 1),
+            "performance_score":  round(perf * 100, 1),
+            "performance_target": round(target_perf * 100, 1),
+        })
+
+    # Sortat după performanță descrescător — cel mai bun la stânga
+    results.sort(key=lambda x: x["performance_score"], reverse=True)
+    return results[:top_n]
